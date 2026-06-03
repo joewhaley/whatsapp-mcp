@@ -45,11 +45,6 @@ func (m *MCPServer) formatDateTime(t time.Time) string {
 	return m.toLocalTime(t).Format("2006-01-02 15:04:05")
 }
 
-// formatTime formats a timestamp in the configured timezone for time-only display.
-func (m *MCPServer) formatTime(t time.Time) string {
-	return m.toLocalTime(t).Format("15:04:05")
-}
-
 // parseTimestamp converts an ISO 8601 timestamp string to time.Time in the server's timezone.
 // It supports the formats: "2006-01-02T15:04:05", "2006-01-02 15:04:05", "2006-01-02".
 func (m *MCPServer) parseTimestamp(timestampStr string) (time.Time, error) {
@@ -237,7 +232,7 @@ func (m *MCPServer) handleGetChatMessages(ctx context.Context, request mcp.CallT
 		}
 
 		fmt.Fprintf(&result, "[%s] %s %s: %s\n",
-			m.formatTime(msg.Timestamp),
+			m.formatDateTime(msg.Timestamp),
 			direction,
 			sender,
 			msg.Text)
@@ -486,7 +481,7 @@ func (m *MCPServer) handleLoadMoreMessages(ctx context.Context, request mcp.Call
 			}
 
 			fmt.Fprintf(&result, "[%s] %s %s: %s\n",
-				m.formatTime(msg.Timestamp),
+				m.formatDateTime(msg.Timestamp),
 				direction,
 				sender,
 				msg.Text)
