@@ -120,6 +120,27 @@ func (s *MessageStore) ListChats(limit int) ([]Chat, error) {
 	return chats, rows.Err()
 }
 
+// GetAllChatJIDs returns the JIDs of every known chat, most recently active first.
+// Unlike ListChats it is not limited, so it is suitable for full-history sweeps.
+func (s *MessageStore) GetAllChatJIDs() ([]string, error) {
+	rows, err := s.db.Query(`SELECT jid FROM chats ORDER BY last_message_time DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jids []string
+	for rows.Next() {
+		var jid string
+		if err := rows.Scan(&jid); err != nil {
+			return nil, err
+		}
+		jids = append(jids, jid)
+	}
+
+	return jids, rows.Err()
+}
+
 // SearchChatsFiltered searches chats with pattern matching.
 // It uses GLOB patterns if useGlob is true, otherwise uses LIKE for fuzzy matching.
 func (s *MessageStore) SearchChatsFiltered(search string, useGlob bool, limit int) ([]Chat, error) {

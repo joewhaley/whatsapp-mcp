@@ -565,3 +565,88 @@ func (m *MCPServer) handleGetMyInfo(ctx context.Context, request mcp.CallToolReq
 
 	return mcp.NewToolResultText(result.String()), nil
 }
+
+// handleSyncHistory handles the sync_history tool request. It starts a background
+// sweep that pages history backwards for one chat (if chat_jid is given) or all
+// chats, and returns immediately.
+func (m *MCPServer) handleSyncHistory(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if !m.wa.IsLoggedIn() {
+		return mcp.NewToolResultError("WhatsApp is not connected"), nil
+	}
+
+	// messages per page (default 100, max 200)
+	perPage := int(request.GetFloat("count", 100.0))
+	if perPage > 200 {
+		perPage = 200
+	}
+	if perPage < 1 {
+		perPage = 100
+	}
+
+	// safety cap on pages per chat (default 50)
+	maxPages := int(request.GetFloat("max_pages", 50.0))
+	if maxPages < 1 {
+		maxPages = 50
+	}
+
+	// determine the chat set: one chat, or all of them
+	chatJID := request.GetString("chat_jid", "")
+	var jids []string
+	if chatJID != "" {
+		jids = []string{chatJID}
+	} else {
+		all, err := m.store.GetAllChatJIDs()
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to list chats: %v", err)), nil
+		}
+		jids = all
+	}
+
+	if err := m.wa.StartHistorySync(jids, perPage, maxPages); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to start history sync: %v", err)), nil
+	}
+
+	scope := fmt.Sprintf("all %d chats", len(jids))
+	if chatJID != "" {
+		scope = fmt.Sprintf("chat %s", chatJID)
+	}
+	return mcp.NewToolResultText(fmt.Sprintf(
+		"Started background history sync for %s (%d msgs/page, up to %d pages/chat). "+
+			"It pages each chat backwards until WhatsApp serves nothing older. "+
+			"This runs in the background and may take a while — your phone must stay online. "+
+			"Use sync_status to check progress.",
+		scope, perPage, maxPages)), nil
+}
+
+// handleSyncStatus handles the sync_status tool request.
+func (m *MCPServer) handleSyncStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	progress, ok := m.wa.GetFullSyncProgress()
+	if !ok {
+		return mcp.NewToolResultText("No history sync has been started yet. Use sync_history to start one."), nil
+	}
+
+	var result strings.Builder
+	if progress.Running {
+		fmt.Fprintf(&result, "History sync RUNNING: %d/%d chats processed.\n",
+			progress.ProcessedChats, progress.TotalChats)
+		if progress.CurrentChat != "" {
+			fmt.Fprintf(&result, "Currently syncing: %s\n", progress.CurrentChat)
+		}
+	} else {
+		fmt.Fprintf(&result, "History sync COMPLETE: %d/%d chats processed.\n",
+			progress.ProcessedChats, progress.TotalChats)
+		if !progress.FinishedAt.IsZero() {
+			fmt.Fprintf(&result, "Finished at: %s\n", m.formatDateTime(progress.FinishedAt))
+		}
+	}
+
+	fmt.Fprintf(&result, "Messages fetched: %d (across %d page requests).\n",
+		progress.MessagesFetched, progress.PagesRequested)
+	if progress.ChatsWithErrors > 0 {
+		fmt.Fprintf(&result, "Chats stopped early (timeout/error): %d — re-run sync_history to retry them.\n",
+			progress.ChatsWithErrors)
+	}
+	fmt.Fprintf(&result, "Started at: %s\n", m.formatDateTime(progress.StartedAt))
+
+	return mcp.NewToolResultText(result.String()), nil
+}
