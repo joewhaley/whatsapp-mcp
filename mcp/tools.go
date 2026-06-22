@@ -73,6 +73,20 @@ func (m *MCPServer) registerTools() {
 		m.handleFindChat,
 	)
 
+	// 7. get my info (available in all modes)
+	m.server.AddTool(
+		mcp.NewTool("get_my_info",
+			mcp.WithDescription("Get your own WhatsApp profile information including JID, display name, status/bio, and profile picture URL."),
+		),
+		m.handleGetMyInfo,
+	)
+
+	// The remaining tools require a live WhatsApp connection (whatsmeow). In
+	// read-only local mode there is no client, so they are not registered.
+	if m.wa == nil {
+		return
+	}
+
 	// 5. send message
 	m.server.AddTool(
 		mcp.NewTool("send_message",
@@ -105,14 +119,6 @@ func (m *MCPServer) registerTools() {
 			),
 		),
 		m.handleLoadMoreMessages,
-	)
-
-	// 7. get my info
-	m.server.AddTool(
-		mcp.NewTool("get_my_info",
-			mcp.WithDescription("Get your own WhatsApp profile information including JID, display name, status/bio, and profile picture URL."),
-		),
-		m.handleGetMyInfo,
 	)
 
 	// 8. sync full history (background)

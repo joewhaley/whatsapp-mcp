@@ -525,6 +525,22 @@ func (m *MCPServer) handleLoadMoreMessages(ctx context.Context, request mcp.Call
 
 // handleGetMyInfo handles the get_my_info tool request.
 func (m *MCPServer) handleGetMyInfo(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// read-only (local) mode: no live client, report identity from the DB.
+	if m.wa == nil {
+		var result strings.Builder
+		fmt.Fprintf(&result, "Your WhatsApp Profile (read-only local mode):\n\n")
+		if m.owner.JID != "" {
+			fmt.Fprintf(&result, "JID: %s\n", m.owner.JID)
+		} else {
+			fmt.Fprintf(&result, "JID: (unknown — could not auto-detect from the local database)\n")
+		}
+		if m.owner.Name != "" {
+			fmt.Fprintf(&result, "Display Name: %s\n", m.owner.Name)
+		}
+		result.WriteString("\nNote: profile picture, status and live details are unavailable in read-only mode.\n")
+		return mcp.NewToolResultText(result.String()), nil
+	}
+
 	// check WhatsApp connection
 	if !m.wa.IsLoggedIn() {
 		return mcp.NewToolResultError("WhatsApp is not connected"), nil

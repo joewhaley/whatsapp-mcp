@@ -334,6 +334,51 @@ store); media attachments are recorded as metadata with status `external`.
 How the format was reverse-engineered and exactly how identities/timestamps are
 mapped is documented in [`localapp/README.md`](localapp/README.md).
 
+## 🗄️ Read-Only Local Mode (no whatsmeow, no second database)
+
+Instead of importing, you can run the MCP server **directly against the native
+WhatsApp desktop app's database**. In this mode the server:
+
+- uses **no whatsmeow** and links no WhatsApp account (no QR code),
+- keeps **no separate or copied database** — it reads the app's
+  `ChatStorage.sqlite` live,
+- **never writes** to that database (it is opened strictly read-only), and
+- exposes the read tools (`list_chats`, `get_chat_messages`, `search_messages`,
+  `find_chat`, `get_my_info`). Sending and live history sync are not available.
+
+This is the simplest way to give an AI assistant access to your **full** WhatsApp
+history with zero syncing — the desktop app remains the single source of truth.
+
+```bash
+# Run the server in read-only local mode (on the Mac with WhatsApp installed)
+WHATSAPP_MODE=local MCP_API_KEY=your-secret-key go run .
+```
+
+Then point your MCP client at `http://localhost:8080/mcp` as usual.
+
+> **Run it on the Mac itself, not in Docker** — the app's database lives in your
+> user Library and isn't visible to a container. By default it auto-locates the
+> standard macOS path; override with `LOCAL_CHATSTORAGE_PATH` if needed.
+
+**How it works:** the server opens `ChatStorage.sqlite` read-only and projects
+the app's Core Data tables onto this project's canonical schema using
+connection-local SQLite `TEMP` views (which live in temporary space and never
+touch the file). `@lid` identities are resolved to phone numbers via `LID.sqlite`,
+exactly as in import mode. Because the views present the same `chats` /
+`messages_with_names` relations the server already queries, all read tools work
+unchanged. Reads reflect the app's live data (committed WAL transactions
+included). See [`localapp/README.md`](localapp/README.md) for the schema details.
+
+### Which mode should I use?
+
+| | **Local mode** (`WHATSAPP_MODE=local`) | **Import** (`cmd/localimport`) | **Default** (whatsmeow) |
+|---|---|---|---|
+| WhatsApp account linked | No | No | Yes (QR) |
+| Separate database | No | Yes (`messages.db`) | Yes (`messages.db`) |
+| Send messages / live sync | No | No | Yes |
+| Full local history | Yes (live) | Yes (snapshot) | Limited by sync |
+| Runs in Docker | No (needs the app's files) | No (host only) | Yes |
+
 ## 📊 Data & Privacy
 
 ### Local Storage
@@ -361,6 +406,7 @@ All data is stored in `./data/`:
 - [x] On-demand message loading from servers
 - [x] Docker deployment (with healthcheck!)
 - [x] Import full history from the local WhatsApp desktop app (macOS)
+- [x] Read-only local mode: serve the native WhatsApp app database directly (no whatsmeow)
 
 ### 🚧 Planned
 

@@ -25,7 +25,6 @@ package main
 
 import (
 	"context"
-	"crypto/subtle"
 	"fmt"
 	"log"
 	"net/http"
@@ -95,6 +94,13 @@ func main() {
 		timezone = time.UTC
 	}
 	log.Printf("Timezone: %s", timezone.String())
+
+	// Read-only "local" mode: serve the native WhatsApp desktop app database
+	// directly, with no whatsmeow client and no separate/copied database.
+	if strings.EqualFold(os.Getenv("WHATSAPP_MODE"), "local") {
+		runLocalMode(apiKey, host, httpPort, timezone)
+		return
+	}
 
 	// ensure data directories exist
 	if err := paths.EnsureDataDirectories(); err != nil {
@@ -203,37 +209,7 @@ func main() {
 	// MCP endpoint. Authenticates via either an "Authorization: Bearer <key>"
 	// header (preferred — keeps the key out of URLs/logs) or the API key as the
 	// first path segment (/mcp/{apiKey}) for backward compatibility.
-	mux.HandleFunc("/mcp/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/mcp/")
-		providedKey := strings.Split(path, "/")[0] // first segment after /mcp/
-
-		authHeader := r.Header.Get("Authorization")
-		headerOK := subtle.ConstantTimeCompare([]byte(authHeader), []byte("Bearer "+apiKey)) == 1
-		pathOK := subtle.ConstantTimeCompare([]byte(providedKey), []byte(apiKey)) == 1
-
-		// remainingPath is the MCP path after the auth segment is stripped.
-		var remainingPath string
-		switch {
-		case headerOK:
-			// Key is in the header; the whole path after /mcp/ is the MCP path.
-			remainingPath = path
-		case pathOK:
-			// Key is in the path; strip it.
-			remainingPath = strings.TrimPrefix(path, providedKey)
-		default:
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("Unauthorized: Invalid API key"))
-			return
-		}
-
-		if !strings.HasPrefix(remainingPath, "/") {
-			remainingPath = "/" + remainingPath
-		}
-		r.URL.Path = "/mcp" + remainingPath
-
-		// Serve the MCP request
-		streamableServer.ServeHTTP(w, r)
-	})
+	mux.HandleFunc("/mcp/", mcpAuthHandler(streamableServer, apiKey))
 
 	// Webhook management API
 	webhookHandler := webhook.NewHandler(webhookManager, webhookStore, apiKey)

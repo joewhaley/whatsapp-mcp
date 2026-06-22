@@ -114,11 +114,24 @@ The **owner JID** is resolved in order: the `--me` flag → the most common
 `is_from_me` sender already in the destination DB → the "Message yourself" chat
 (`ZWACHATSESSION` whose partner name is "You").
 
-## Usage
+## Two ways to use this package
 
-See `cmd/localimport` and the project README. In short:
+**1. Import (`cmd/localimport`)** — `Open` + `Import` copy the history into the
+project's `messages.db`. One-shot snapshot; works alongside the live sync.
 
 ```bash
 go run ./cmd/localimport --dry-run      # report what would be imported
 go run ./cmd/localimport                # merge into data/db/messages.db
 ```
+
+**2. Read-only server mode (`OpenServer`)** — the MCP server reads the native
+database live, with no copy and no whatsmeow. `OpenServer` opens
+`ChatStorage.sqlite` read-only and creates connection-local `TEMP` views
+(`chats`, `messages`, `push_names`, `media_metadata`, `messages_with_names`)
+that project the Core Data tables onto the canonical schema, so the existing
+`storage.MessageStore` works unchanged. The Core Data → canonical conversions
+(`wa_unix`, `wa_normjid`, `wa_msgtype`, `wa_placeholder`, `wa_basename`,
+`wa_mime`) are registered as SQLite scalar functions backed by the same Go
+conversion code used by import, via a modernc connection hook so every pooled
+connection has the views. Enabled with `WHATSAPP_MODE=local` (see the project
+README).
