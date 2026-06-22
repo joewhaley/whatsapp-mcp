@@ -294,6 +294,46 @@ AI: [Uses search_keyword prompt]
     → Orders by relevance/date
 ```
 
+## 📲 Import from the WhatsApp Desktop App (macOS)
+
+The whatsmeow history sync can only retrieve a limited window of history. The
+**macOS WhatsApp desktop app**, however, keeps your *full* local history in an
+on-disk SQLite database. The `localimport` tool reads that database directly and
+merges it into `messages.db`, so the locally installed app can act as a richer
+source of messages — typically tens of thousands of messages further back than
+the live sync reaches.
+
+> **Run it on the Mac itself**, not inside Docker — the WhatsApp app's data lives
+> in your user Library and isn't visible to the container. Point `--db` at the
+> same `messages.db` your server uses.
+
+```bash
+# 1. See what would be imported (no writes)
+go run ./cmd/localimport --dry-run
+
+# 2. Merge the local app's history into data/db/messages.db
+go run ./cmd/localimport
+
+# Useful flags:
+#   --src <path>        ChatStorage.sqlite (default: the standard macOS location)
+#   --lid <path>        LID.sqlite (default: sibling of --src)
+#   --db <path>         destination messages.db (default: ./data/db/messages.db)
+#   --me <number>       your own phone/JID (default: auto-detected)
+#   --since 2025-01-01  only import messages on/after a date
+#   --chat <jid>        only import a single chat
+#   --include-system    include group/system event messages
+#   --no-copy           read the live DB in place (default copies a snapshot first)
+```
+
+The import is **idempotent** — messages are keyed by their WhatsApp IDs, so it
+safely overlaps with the live sync and can be re-run any time. By default it
+reads a temporary snapshot of the app's databases so it never disturbs a running
+WhatsApp app. It does **not** copy media files (they stay in the app's own
+store); media attachments are recorded as metadata with status `external`.
+
+How the format was reverse-engineered and exactly how identities/timestamps are
+mapped is documented in [`localapp/README.md`](localapp/README.md).
+
 ## 📊 Data & Privacy
 
 ### Local Storage
@@ -320,6 +360,7 @@ All data is stored in `./data/`:
 - [x] Timezone support
 - [x] On-demand message loading from servers
 - [x] Docker deployment (with healthcheck!)
+- [x] Import full history from the local WhatsApp desktop app (macOS)
 
 ### 🚧 Planned
 
