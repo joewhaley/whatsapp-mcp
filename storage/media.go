@@ -73,6 +73,61 @@ func (s *MediaStore) SaveMediaMetadata(meta MediaMetadata) error {
 	return err
 }
 
+// SaveMediaMetadataBulk saves multiple media metadata records in a single
+// transaction. It is optimized for bulk import operations.
+func (s *MediaStore) SaveMediaMetadataBulk(items []MediaMetadata) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
+	INSERT OR REPLACE INTO media_metadata
+	(message_id, file_path, file_name, file_size, mime_type, width, height, duration,
+	 media_key, direct_path, file_sha256, file_enc_sha256, download_status, download_timestamp, download_error)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, meta := range items {
+		var downloadTimestampUnix *int64
+		if meta.DownloadTimestamp != nil {
+			ts := meta.DownloadTimestamp.Unix()
+			downloadTimestampUnix = &ts
+		}
+
+		if _, err := stmt.Exec(
+			meta.MessageID,
+			meta.FilePath,
+			meta.FileName,
+			meta.FileSize,
+			meta.MimeType,
+			meta.Width,
+			meta.Height,
+			meta.Duration,
+			meta.MediaKey,
+			meta.DirectPath,
+			meta.FileSHA256,
+			meta.FileEncSHA256,
+			meta.DownloadStatus,
+			downloadTimestampUnix,
+			meta.DownloadError,
+		); err != nil {
+			return fmt.Errorf("failed to insert media metadata for %s: %w", meta.MessageID, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
 // GetMediaMetadata retrieves media metadata by message ID.
 // It returns nil if the metadata is not found.
 func (s *MediaStore) GetMediaMetadata(messageID string) (*MediaMetadata, error) {
