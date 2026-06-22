@@ -35,6 +35,21 @@ type Client struct {
 	historySyncMux   sync.Mutex           // protects the map
 	ctx              context.Context      // client lifecycle context
 	cancel           context.CancelFunc   // cancel function to stop all goroutines
+	syncProgress     *FullSyncProgress    // state of the current/last full-history sweep
+	syncProgressMux  sync.Mutex           // protects syncProgress
+}
+
+// FullSyncProgress tracks the state of a background full-history sweep.
+type FullSyncProgress struct {
+	Running         bool
+	StartedAt       time.Time
+	FinishedAt      time.Time // zero until the sweep finishes
+	TotalChats      int
+	ProcessedChats  int
+	CurrentChat     string
+	MessagesFetched int
+	PagesRequested  int
+	ChatsWithErrors int // chats that stopped early due to a timeout/error
 }
 
 // fileLogger wraps a logger to write to both stdout and a file.
@@ -301,6 +316,130 @@ func (c *Client) RequestHistorySync(ctx context.Context, chatJID string, count i
 		c.log.Infof("Sent ON_DEMAND history sync request for chat %s (count: %d, async mode)", normalizedJID, count)
 		return []storage.MessageWithNames{}, nil
 	}
+}
+
+// SyncChatHistory repeatedly pages a single chat's history backwards until
+// WhatsApp serves nothing older (a page returns zero messages) or maxPages is
+// reached. It returns the number of older messages fetched and pages requested.
+// An error from any page stops the loop and is returned along with partial counts.
+func (c *Client) SyncChatHistory(ctx context.Context, chatJID string, perPage, maxPages int) (fetched, pages int, err error) {
+	for pages = 0; pages < maxPages; pages++ {
+		select {
+		case <-ctx.Done():
+			return fetched, pages, ctx.Err()
+		default:
+		}
+
+		msgs, e := c.RequestHistorySync(ctx, chatJID, perPage, true)
+		if e != nil {
+			return fetched, pages, e
+		}
+		if len(msgs) == 0 {
+			// reached the oldest message WhatsApp will serve for this chat
+			break
+		}
+		fetched += len(msgs)
+	}
+	return fetched, pages, nil
+}
+
+// StartHistorySync launches a background sweep that runs SyncChatHistory over
+// each of the given chat JIDs sequentially. It returns immediately; progress is
+// observable via GetFullSyncProgress. Only one sweep may run at a time.
+func (c *Client) StartHistorySync(jids []string, perPage, maxPages int) error {
+	if !c.IsLoggedIn() {
+		return fmt.Errorf("not logged in")
+	}
+	if len(jids) == 0 {
+		return fmt.Errorf("no chats to sync")
+	}
+
+	c.syncProgressMux.Lock()
+	if c.syncProgress != nil && c.syncProgress.Running {
+		running := c.syncProgress
+		c.syncProgressMux.Unlock()
+		return fmt.Errorf("a history sync is already running (%d/%d chats processed)",
+			running.ProcessedChats, running.TotalChats)
+	}
+	c.syncProgress = &FullSyncProgress{
+		Running:    true,
+		StartedAt:  time.Now(),
+		TotalChats: len(jids),
+	}
+	c.syncProgressMux.Unlock()
+
+	go c.runHistorySync(jids, perPage, maxPages)
+	return nil
+}
+
+// runHistorySync is the background worker started by StartHistorySync.
+func (c *Client) runHistorySync(jids []string, perPage, maxPages int) {
+	c.log.Infof("Starting history sync sweep over %d chats (%d msgs/page, max %d pages/chat)",
+		len(jids), perPage, maxPages)
+
+	for i, jid := range jids {
+		select {
+		case <-c.ctx.Done():
+			c.log.Infof("History sync sweep cancelled after %d/%d chats", i, len(jids))
+			c.finishHistorySync()
+			return
+		default:
+		}
+
+		c.syncProgressMux.Lock()
+		c.syncProgress.CurrentChat = jid
+		c.syncProgressMux.Unlock()
+
+		fetched, pages, err := c.SyncChatHistory(c.ctx, jid, perPage, maxPages)
+
+		c.syncProgressMux.Lock()
+		c.syncProgress.ProcessedChats = i + 1
+		c.syncProgress.MessagesFetched += fetched
+		c.syncProgress.PagesRequested += pages
+		if err != nil {
+			c.syncProgress.ChatsWithErrors++
+		}
+		c.syncProgressMux.Unlock()
+
+		if err != nil {
+			c.log.Warnf("History sync: chat %s stopped after %d pages (%d msgs): %v",
+				jid, pages, fetched, err)
+		} else {
+			c.log.Infof("History sync: chat %s done (%d pages, %d msgs) [%d/%d]",
+				jid, pages, fetched, i+1, len(jids))
+		}
+	}
+
+	c.finishHistorySync()
+}
+
+// finishHistorySync marks the current sweep as complete.
+func (c *Client) finishHistorySync() {
+	c.syncProgressMux.Lock()
+	if c.syncProgress != nil {
+		c.syncProgress.Running = false
+		c.syncProgress.FinishedAt = time.Now()
+		c.syncProgress.CurrentChat = ""
+	}
+	total := 0
+	fetched := 0
+	if c.syncProgress != nil {
+		total = c.syncProgress.ProcessedChats
+		fetched = c.syncProgress.MessagesFetched
+	}
+	c.syncProgressMux.Unlock()
+	c.log.Infof("History sync sweep complete: %d chats processed, %d messages fetched", total, fetched)
+}
+
+// GetFullSyncProgress returns a snapshot of the current/last sweep. The bool is
+// false if no sweep has ever been started.
+func (c *Client) GetFullSyncProgress() (FullSyncProgress, bool) {
+	c.syncProgressMux.Lock()
+	defer c.syncProgressMux.Unlock()
+	if c.syncProgress == nil {
+		return FullSyncProgress{}, false
+	}
+	return *c.syncProgress, true
 }
 
 // MyInfo contains the user's own WhatsApp profile information

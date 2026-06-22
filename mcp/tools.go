@@ -114,4 +114,29 @@ func (m *MCPServer) registerTools() {
 		),
 		m.handleGetMyInfo,
 	)
+
+	// 8. sync full history (background)
+	m.server.AddTool(
+		mcp.NewTool("sync_history",
+			mcp.WithDescription("Fetch ALL available history by repeatedly paging backwards until WhatsApp serves nothing older. Runs in the background and returns immediately; use sync_status to track progress. Omit chat_jid to sweep every chat, or provide one to deep-sync a single chat. Requires the phone to be online."),
+			mcp.WithString("chat_jid",
+				mcp.Description("optional: a single chat JID to deep-sync. If omitted, sweeps all known chats."),
+			),
+			mcp.WithNumber("count",
+				mcp.Description("messages to request per page (default: 100, max: 200)"),
+			),
+			mcp.WithNumber("max_pages",
+				mcp.Description("safety cap on pages per chat (default: 50). Each page is up to 'count' messages."),
+			),
+		),
+		m.handleSyncHistory,
+	)
+
+	// 9. sync status
+	m.server.AddTool(
+		mcp.NewTool("sync_status",
+			mcp.WithDescription("Report the progress of the background history sync started by sync_history (chats processed, messages fetched, whether it is still running)."),
+		),
+		m.handleSyncStatus,
+	)
 }

@@ -1,0 +1,14 @@
+# Runtime state and secrets — never needed in the build context
+data/
+.env
+qr.png
+*.log
+
+# VCS and local tooling
+.git/
+.github/
+.claude/
+
+# Docs (not needed to build the binary)
+*.md
+LICENSE
