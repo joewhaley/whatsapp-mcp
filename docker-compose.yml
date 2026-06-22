@@ -3,10 +3,15 @@ services:
     build: .
     container_name: whatsapp-mcp
     ports:
-      - '${MCP_PORT:-8080}:8080'
+      # publish on host loopback only; the server binds 0.0.0.0 INSIDE the container
+      # (MCP_HOST below) so Docker's published-port forward can reach it via eth0.
+      - '127.0.0.1:${MCP_PORT:-8080}:8080'
     environment:
       - MCP_API_KEY=${MCP_API_KEY}
       - MCP_PORT=8080
+      # bind all interfaces in-container: a 127.0.0.1 bind isn't reachable through
+      # Docker's published port (delivered to eth0), which silently breaks host access.
+      - MCP_HOST=0.0.0.0
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - TIMEZONE=${TIMEZONE:-UTC}
       - MEDIA_AUTO_DOWNLOAD_ENABLED=${MEDIA_AUTO_DOWNLOAD_ENABLED:-true}
