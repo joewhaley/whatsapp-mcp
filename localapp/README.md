@@ -6,6 +6,12 @@ rest of this project. It lets the locally installed app act as a *source of
 messages* — independent of, and usually far more complete than, the whatsmeow
 history sync (the desktop app retains your full local history).
 
+> **Windows?** The native WhatsApp for Windows app stores its data encrypted and
+> split across SQLCipher + a WebView2 IndexedDB, so it needs a different,
+> two-step extraction. See [`windows/README.md`](windows/README.md). Once
+> extracted, it imports through the same pipeline via
+> `cmd/localimport -platform windows`.
+
 ## Where the data lives
 
 The app is sandboxed under a shared App Group container:

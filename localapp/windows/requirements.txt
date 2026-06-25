@@ -1,0 +1,12 @@
+# Python dependencies for the WhatsApp-for-Windows extractor.
+# Requires Python 3.11 or 3.12 (dfindexeddb wheels are not yet published for 3.13+).
+#
+#   python -m pip install -r requirements.txt
+
+# Google's IndexedDB/LevelDB forensic library: parses the Chromium LevelDB and
+# deserializes the V8 "structured clone" values that hold WhatsApp's message model.
+dfindexeddb
+
+# LevelDB compresses blocks with Snappy. The 0.7.x wheel is pure-Python and
+# delegates to cramjam (a prebuilt Rust wheel), so no C toolchain is needed.
+python-snappy>=0.7.0

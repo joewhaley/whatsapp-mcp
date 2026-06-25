@@ -34,6 +34,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"whatsapp-mcp/localapp"
@@ -62,15 +64,11 @@ func run() error {
 		includeSystem = flag.Bool("include-system", false, "include group/system event messages")
 		dryRun        = flag.Bool("dry-run", false, "read and report counts without writing")
 		noCopy        = flag.Bool("no-copy", false, "read the source databases in place instead of copying them to a temp dir first")
+		noOverwrite   = flag.Bool("no-overwrite", false, "only insert messages the DB lacks (and upgrade [Protocol]-style placeholders); never overwrite existing rows")
+		platform      = flag.String("platform", "auto", "source platform: auto|macos|windows (auto = this OS)")
+		exportPath    = flag.String("export", "", "windows: path to the extract_whatsapp_windows.py intermediate SQLite")
 	)
 	flag.Parse()
-
-	if *srcPath == "" {
-		return fmt.Errorf("--src is required (could not determine a default path)")
-	}
-	if _, err := os.Stat(*srcPath); err != nil {
-		return fmt.Errorf("ChatStorage not found at %q: %w", *srcPath, err)
-	}
 
 	var since time.Time
 	if *sinceStr != "" {
@@ -79,6 +77,25 @@ func run() error {
 			return err
 		}
 		since = t
+	}
+	filter := localapp.MessageFilter{
+		Since:         since,
+		ChatJID:       *chatJID,
+		Limit:         *limit,
+		IncludeSystem: *includeSystem,
+	}
+
+	// Windows stores its history very differently (encrypted SQLCipher + WebView2
+	// IndexedDB) and is imported from a pre-extracted intermediate database.
+	if resolvePlatform(*platform) == "windows" {
+		return runWindows(*exportPath, *dbPath, *meJID, filter, *dryRun, *noOverwrite)
+	}
+
+	if *srcPath == "" {
+		return fmt.Errorf("--src is required (could not determine a default path)")
+	}
+	if _, err := os.Stat(*srcPath); err != nil {
+		return fmt.Errorf("ChatStorage not found at %q: %w", *srcPath, err)
 	}
 
 	// By default, copy the (possibly live) source databases to a temp dir so we
@@ -135,17 +152,70 @@ func run() error {
 	}
 	defer src.Close()
 
-	if src.OwnerJID() == "" {
+	return doImport(src, src.OwnerJID(), *srcPath, *dbPath, dest, filter, *dryRun, *noOverwrite)
+}
+
+// resolvePlatform maps the --platform flag (or "auto") to "windows" or "macos".
+func resolvePlatform(p string) string {
+	switch strings.ToLower(strings.TrimSpace(p)) {
+	case "windows", "win":
+		return "windows"
+	case "macos", "mac", "darwin":
+		return "macos"
+	default:
+		if runtime.GOOS == "windows" {
+			return "windows"
+		}
+		return "macos"
+	}
+}
+
+// runWindows imports from the intermediate SQLite produced by the Windows
+// extract_whatsapp_windows.py pre-step (the native app's data is encrypted and
+// split across SQLCipher + WebView2 IndexedDB, so it can't be read in place).
+func runWindows(exportPath, dbPath, meJID string, filter localapp.MessageFilter, dryRun, noOverwrite bool) error {
+	if exportPath == "" {
+		return fmt.Errorf("windows import requires -export <intermediate.db>; " +
+			"generate it with localapp/windows/extract_whatsapp_windows.py (see localapp/windows/README.md)")
+	}
+	if _, err := os.Stat(exportPath); err != nil {
+		return fmt.Errorf("windows export not found at %q: %w", exportPath, err)
+	}
+	dest, err := openDestDB(dbPath)
+	if err != nil {
+		return err
+	}
+	defer dest.Close()
+
+	owner := meJID
+	if owner == "" {
+		owner = detectOwnerFromDest(dest)
+	}
+	src, err := localapp.OpenWindows(localapp.WindowsOptions{ExportPath: exportPath, OwnerJID: owner})
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	return doImport(src, src.OwnerJID(), exportPath, dbPath, dest, filter, dryRun, noOverwrite)
+}
+
+// doImport runs the shared import pipeline for any Source and prints a summary.
+func doImport(src localapp.Source, ownerJID, srcDesc, dbPath string, dest *sql.DB, filter localapp.MessageFilter, dryRun, noOverwrite bool) error {
+	if ownerJID == "" {
 		fmt.Fprintln(os.Stderr, "warning: could not determine your own JID; sent messages will have an empty sender. "+
 			"Pass --me <your-number> to fix this.")
 	} else {
-		fmt.Printf("Owner JID: %s\n", src.OwnerJID())
+		fmt.Printf("Owner JID: %s\n", ownerJID)
 	}
 
-	fmt.Printf("Source:    %s\n", *srcPath)
-	fmt.Printf("Dest:      %s\n", *dbPath)
-	if *dryRun {
+	fmt.Printf("Source:    %s\n", srcDesc)
+	fmt.Printf("Dest:      %s\n", dbPath)
+	switch {
+	case dryRun:
 		fmt.Println("Mode:      DRY RUN (no writes)")
+	case noOverwrite:
+		fmt.Println("Mode:      no-overwrite (fill gaps; upgrade [Protocol]-style placeholders)")
 	}
 	fmt.Println("Importing...")
 
@@ -154,13 +224,9 @@ func run() error {
 
 	start := time.Now()
 	stats, err := localapp.Import(src, messageStore, mediaStore, localapp.ImportOptions{
-		Filter: localapp.MessageFilter{
-			Since:         since,
-			ChatJID:       *chatJID,
-			Limit:         *limit,
-			IncludeSystem: *includeSystem,
-		},
-		DryRun: *dryRun,
+		Filter:      filter,
+		DryRun:      dryRun,
+		NoOverwrite: noOverwrite,
 		Progress: func(messages int) {
 			fmt.Printf("\r  %d messages processed...", messages)
 		},

@@ -17,6 +17,11 @@ type ImportOptions struct {
 	BatchSize int
 	// DryRun reads and counts everything but writes nothing.
 	DryRun bool
+	// NoOverwrite, when true, never overwrites a message the destination already
+	// has — it only inserts missing messages, except that existing rows whose
+	// text is a live-sync placeholder (e.g. "[Protocol]") are upgraded to the
+	// real text. The default (false) upserts every row, replacing existing ones.
+	NoOverwrite bool
 	// Progress, when set, is called periodically with the running message count.
 	Progress func(messages int)
 }
@@ -31,10 +36,23 @@ type ImportStats struct {
 	MissingSender int // group messages with an unresolved sender
 }
 
+// Source is a read-only provider of a local WhatsApp installation's history in
+// canonical form. Both the macOS Core Data reader (*Store) and the Windows
+// IndexedDB-export reader (*WindowsStore) implement it, so they share the same
+// Import pipeline.
+type Source interface {
+	// Chats returns all importable chat sessions.
+	Chats() []ChatRecord
+	// PushNames returns the JID -> display-name map.
+	PushNames() (map[string]string, error)
+	// IterateMessages streams messages (oldest first) matching filter.
+	IterateMessages(filter MessageFilter, fn func(MessageRecord) error) error
+}
+
 // Import copies chats, push names and messages from the local WhatsApp store
 // into the destination message/media stores. It is idempotent: re-running it
 // upserts rows by their WhatsApp IDs, so it can run alongside the live sync.
-func Import(src *Store, dest *storage.MessageStore, media *storage.MediaStore, opts ImportOptions) (ImportStats, error) {
+func Import(src Source, dest *storage.MessageStore, media *storage.MediaStore, opts ImportOptions) (ImportStats, error) {
 	var stats ImportStats
 
 	batchSize := opts.BatchSize
@@ -58,7 +76,11 @@ func Import(src *Store, dest *storage.MessageStore, media *storage.MediaStore, o
 			c.ContactName = chat.Name
 		}
 		if !opts.DryRun {
-			if err := dest.SaveChat(c); err != nil {
+			save := dest.SaveChat
+			if opts.NoOverwrite {
+				save = dest.SaveChatFillGaps
+			}
+			if err := save(c); err != nil {
 				return stats, fmt.Errorf("save chat %s: %w", chat.JID, err)
 			}
 		}
@@ -71,7 +93,11 @@ func Import(src *Store, dest *storage.MessageStore, media *storage.MediaStore, o
 		return stats, fmt.Errorf("read push names: %w", err)
 	}
 	if !opts.DryRun && len(pushNames) > 0 {
-		if err := dest.SavePushNames(pushNames); err != nil {
+		savePush := dest.SavePushNames
+		if opts.NoOverwrite {
+			savePush = dest.SavePushNamesFillGaps
+		}
+		if err := savePush(pushNames); err != nil {
 			return stats, fmt.Errorf("save push names: %w", err)
 		}
 	}
@@ -86,11 +112,20 @@ func Import(src *Store, dest *storage.MessageStore, media *storage.MediaStore, o
 			return nil
 		}
 		if !opts.DryRun {
-			if err := dest.SaveBulk(msgBatch); err != nil {
-				return fmt.Errorf("save messages: %w", err)
-			}
-			if err := media.SaveMediaMetadataBulk(mediaBatch); err != nil {
-				return fmt.Errorf("save media: %w", err)
+			if opts.NoOverwrite {
+				if err := dest.SaveBulkFillGaps(msgBatch); err != nil {
+					return fmt.Errorf("save messages: %w", err)
+				}
+				if err := media.SaveMediaMetadataBulkFillGaps(mediaBatch); err != nil {
+					return fmt.Errorf("save media: %w", err)
+				}
+			} else {
+				if err := dest.SaveBulk(msgBatch); err != nil {
+					return fmt.Errorf("save messages: %w", err)
+				}
+				if err := media.SaveMediaMetadataBulk(mediaBatch); err != nil {
+					return fmt.Errorf("save media: %w", err)
+				}
 			}
 		}
 		msgBatch = msgBatch[:0]
