@@ -19,6 +19,7 @@ const coreDataEpochOffset = 978307200
 // WhatsApp JID server suffixes.
 const (
 	serverUser       = "s.whatsapp.net"
+	serverCUS        = "c.us" // legacy individual server (WhatsApp Web / Windows app)
 	serverLID        = "lid"
 	serverGroup      = "g.us"
 	serverBroadcast  = "broadcast"
@@ -178,6 +179,9 @@ func normalizeUserJID(raw string, lidMap map[string]string) string {
 	switch server {
 	case serverGroup, serverBroadcast, serverNewsletter, serverStatus:
 		return user + "@" + server
+	case serverCUS:
+		// Legacy individual server: canonicalize to the modern user server.
+		return user + "@" + serverUser
 	case serverLID:
 		if pn, ok := lidMap[user]; ok && pn != "" {
 			return pn + "@" + serverUser

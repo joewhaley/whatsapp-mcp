@@ -294,14 +294,15 @@ AI: [Uses search_keyword prompt]
     → Orders by relevance/date
 ```
 
-## 📲 Import from the WhatsApp Desktop App (macOS)
+## 📲 Import from the WhatsApp Desktop App (macOS & Windows)
 
 The whatsmeow history sync can only retrieve a limited window of history. The
-**macOS WhatsApp desktop app**, however, keeps your *full* local history in an
-on-disk SQLite database. The `localimport` tool reads that database directly and
-merges it into `messages.db`, so the locally installed app can act as a richer
-source of messages — typically tens of thousands of messages further back than
-the live sync reaches.
+**WhatsApp desktop app**, however, keeps your *full* local history on disk. The
+`localimport` tool reads that and merges it into `messages.db`, so the locally
+installed app can act as a richer source of messages — typically tens of
+thousands of messages further back than the live sync reaches. On **macOS** it
+reads the app's SQLite database directly (below); on **Windows** the data is
+encrypted and needs a short extraction first ([see Windows](#windows)).
 
 > **Run it on the Mac itself**, not inside Docker — the WhatsApp app's data lives
 > in your user Library and isn't visible to the container. Point `--db` at the
@@ -333,6 +334,28 @@ store); media attachments are recorded as metadata with status `external`.
 
 How the format was reverse-engineered and exactly how identities/timestamps are
 mapped is documented in [`localapp/README.md`](localapp/README.md).
+
+### Windows
+
+The **native WhatsApp for Windows app** also keeps your full local history, but
+stores it encrypted and split across a SQLCipher database (message text) and a
+WebView2 IndexedDB (rich metadata). Importing it therefore takes a short
+two-step extraction first, after which it merges into `messages.db` through the
+same idempotent pipeline:
+
+```bash
+# 1. Decrypt + extract into an intermediate database (see the guide for details)
+python localapp/windows/extract_whatsapp_windows.py \
+    --idb <…IndexedDB…> --generic <genericStorage.dec.db> \
+    --contacts <contacts.dec.db> --out wa-windows-export.db
+
+# 2. Import it
+go run ./cmd/localimport -platform windows -export wa-windows-export.db
+```
+
+The full procedure (decrypting the SQLCipher store with ZAPiXDESK, locating the
+IndexedDB, Python prerequisites and limitations) is in
+[`localapp/windows/README.md`](localapp/windows/README.md).
 
 ## 🗄️ Read-Only Local Mode (no whatsmeow, no second database)
 
@@ -406,6 +429,7 @@ All data is stored in `./data/`:
 - [x] On-demand message loading from servers
 - [x] Docker deployment (with healthcheck!)
 - [x] Import full history from the local WhatsApp desktop app (macOS)
+- [x] Import full history from the local WhatsApp desktop app (Windows: decrypt + IndexedDB extract)
 - [x] Read-only local mode: serve the native WhatsApp app database directly (no whatsmeow)
 
 ### 🚧 Planned

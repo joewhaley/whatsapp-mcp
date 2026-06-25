@@ -31,10 +31,23 @@ type ImportStats struct {
 	MissingSender int // group messages with an unresolved sender
 }
 
+// Source is a read-only provider of a local WhatsApp installation's history in
+// canonical form. Both the macOS Core Data reader (*Store) and the Windows
+// IndexedDB-export reader (*WindowsStore) implement it, so they share the same
+// Import pipeline.
+type Source interface {
+	// Chats returns all importable chat sessions.
+	Chats() []ChatRecord
+	// PushNames returns the JID -> display-name map.
+	PushNames() (map[string]string, error)
+	// IterateMessages streams messages (oldest first) matching filter.
+	IterateMessages(filter MessageFilter, fn func(MessageRecord) error) error
+}
+
 // Import copies chats, push names and messages from the local WhatsApp store
 // into the destination message/media stores. It is idempotent: re-running it
 // upserts rows by their WhatsApp IDs, so it can run alongside the live sync.
-func Import(src *Store, dest *storage.MessageStore, media *storage.MediaStore, opts ImportOptions) (ImportStats, error) {
+func Import(src Source, dest *storage.MessageStore, media *storage.MediaStore, opts ImportOptions) (ImportStats, error) {
 	var stats ImportStats
 
 	batchSize := opts.BatchSize
