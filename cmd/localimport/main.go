@@ -1,15 +1,21 @@
-// localimport imports chats and messages from a locally installed WhatsApp
-// desktop (macOS) application directly into this project's messages database.
+// localimport imports chats and messages from a locally available WhatsApp
+// history source directly into this project's messages database.
 //
-// The macOS WhatsApp app stores its history in a Core Data SQLite database
-// (ChatStorage.sqlite) inside its shared group container. That store is often
-// far more complete than what the whatsmeow history sync can retrieve, so this
-// tool lets the local app act as a source of messages.
+// It supports three sources, all mapped onto the same canonical schema and
+// merged by the same idempotent pipeline (rows keyed by their WhatsApp IDs, so
+// it is safe to re-run and to run alongside the live whatsmeow sync):
 //
-// It reads ChatStorage.sqlite (and LID.sqlite, which maps @lid identities back
-// to phone numbers), converts everything into the canonical schema, and upserts
-// it into messages.db. It is idempotent and safe to run repeatedly alongside the
-// live sync — messages are keyed by their WhatsApp IDs.
+//   - macOS desktop app (default): reads ChatStorage.sqlite (a Core Data store)
+//     and LID.sqlite directly. See localapp/README.md.
+//   - Windows desktop app (-platform windows -export …): reads the intermediate
+//     SQLite produced by localapp/windows/extract_whatsapp_windows.py.
+//   - Android Google Drive backup (-platform android -msgstore …): reads the
+//     plaintext msgstore.db produced by decrypting the Drive backup with wabdd.
+//     See localapp/android/README.md.
+//
+// The desktop app stores are often far more complete than what the whatsmeow
+// history sync can retrieve, so these sources let the local app / backup act as
+// a richer source of messages.
 //
 // Usage:
 //
@@ -25,6 +31,9 @@
 //
 //	# Import a single chat since a date
 //	go run ./cmd/localimport --chat 16502833196@s.whatsapp.net --since 2025-01-01
+//
+//	# Import from a decrypted Android Google Drive backup
+//	go run ./cmd/localimport -platform android -msgstore msgstore.db -no-overwrite
 package main
 
 import (
@@ -65,8 +74,9 @@ func run() error {
 		dryRun        = flag.Bool("dry-run", false, "read and report counts without writing")
 		noCopy        = flag.Bool("no-copy", false, "read the source databases in place instead of copying them to a temp dir first")
 		noOverwrite   = flag.Bool("no-overwrite", false, "only insert messages the DB lacks (and upgrade [Protocol]-style placeholders); never overwrite existing rows")
-		platform      = flag.String("platform", "auto", "source platform: auto|macos|windows (auto = this OS)")
+		platform      = flag.String("platform", "auto", "source platform: auto|macos|windows|android (auto = this OS)")
 		exportPath    = flag.String("export", "", "windows: path to the extract_whatsapp_windows.py intermediate SQLite")
+		msgstorePath  = flag.String("msgstore", "", "android: path to the decrypted msgstore.db (from a Google Drive backup)")
 	)
 	flag.Parse()
 
@@ -89,6 +99,12 @@ func run() error {
 	// IndexedDB) and is imported from a pre-extracted intermediate database.
 	if resolvePlatform(*platform) == "windows" {
 		return runWindows(*exportPath, *dbPath, *meJID, filter, *dryRun, *noOverwrite)
+	}
+
+	// Android backups (Google Drive) are decrypted out-of-band into a plaintext
+	// msgstore.db, which we read directly.
+	if resolvePlatform(*platform) == "android" {
+		return runAndroid(*msgstorePath, *dbPath, *meJID, filter, *dryRun, *noOverwrite)
 	}
 
 	if *srcPath == "" {
@@ -160,6 +176,8 @@ func resolvePlatform(p string) string {
 	switch strings.ToLower(strings.TrimSpace(p)) {
 	case "windows", "win":
 		return "windows"
+	case "android", "gdrive", "googledrive":
+		return "android"
 	case "macos", "mac", "darwin":
 		return "macos"
 	default:
@@ -198,6 +216,37 @@ func runWindows(exportPath, dbPath, meJID string, filter localapp.MessageFilter,
 	defer src.Close()
 
 	return doImport(src, src.OwnerJID(), exportPath, dbPath, dest, filter, dryRun, noOverwrite)
+}
+
+// runAndroid imports from the decrypted Android msgstore.db produced from a
+// Google Drive backup. The download + crypt15 decryption is done out-of-band by
+// the wabdd tool (see localapp/android/README.md); here we read the resulting
+// plaintext SQLite directly.
+func runAndroid(msgstorePath, dbPath, meJID string, filter localapp.MessageFilter, dryRun, noOverwrite bool) error {
+	if msgstorePath == "" {
+		return fmt.Errorf("android import requires -msgstore <msgstore.db>; " +
+			"download and decrypt the Google Drive backup with wabdd first (see localapp/android/README.md)")
+	}
+	if _, err := os.Stat(msgstorePath); err != nil {
+		return fmt.Errorf("decrypted msgstore.db not found at %q: %w", msgstorePath, err)
+	}
+	dest, err := openDestDB(dbPath)
+	if err != nil {
+		return err
+	}
+	defer dest.Close()
+
+	owner := meJID
+	if owner == "" {
+		owner = detectOwnerFromDest(dest)
+	}
+	src, err := localapp.OpenAndroid(localapp.AndroidOptions{MsgstorePath: msgstorePath, OwnerJID: owner})
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	return doImport(src, src.OwnerJID(), msgstorePath, dbPath, dest, filter, dryRun, noOverwrite)
 }
 
 // doImport runs the shared import pipeline for any Source and prints a summary.

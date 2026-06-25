@@ -1,3 +1,11 @@
 data/*
 qr.png
 .env
+
+# WhatsApp Google Drive backup import (wabdd): never commit secrets/backups
+key.txt
+tokens/
+backups/
+*.crypt14
+*.crypt15
+msgstore.db

@@ -364,6 +364,44 @@ The full procedure (decrypting the SQLCipher store with ZAPiXDESK, locating the
 IndexedDB, Python prerequisites and limitations) is in
 [`localapp/windows/README.md`](localapp/windows/README.md).
 
+## ☁️ Import from a Google Drive backup (Android)
+
+Don't have the desktop app, but use **WhatsApp on Android**? Your full history is
+backed up to **Google Drive**, encrypted end-to-end. Download and decrypt that
+backup to get a plaintext **`msgstore.db`**, and the same idempotent pipeline
+imports it into `messages.db`.
+
+The download + crypt15 decryption is handled by the maintained
+[`wabdd`](https://github.com/giacomoferretti/whatsapp-backup-downloader-decryptor)
+tool (just as the Windows path leans on ZAPiXDESK); this project consumes its
+decrypted output. You need your **64-digit encryption key** (WhatsApp → Settings
+→ Chats → Chat backup → End-to-end encrypted backup → *Use 64-digit key*).
+
+> **The backup must be end-to-end encrypted (`.crypt15`).** A default, non-E2E
+> backup is `.crypt14`, which is encrypted with an on-device key `wabdd` can't
+> use. If your latest backup is `crypt14`, turn on the E2E encrypted backup and
+> let it run once first. See the Android guide for how to check.
+
+```bash
+# 1. Install the downloader/decryptor
+uv tool install wabdd            # or: pipx install wabdd
+
+# 2. Authenticate to Google (paste the oauth_token cookie when prompted)
+wabdd token YOUR_GOOGLE_EMAIL@gmail.com
+
+# 3. Download the backup, then decrypt it with your 64-digit key (in key.txt)
+wabdd download --master-token tokens/YOUR_GOOGLE_EMAIL_gmail_com_mastertoken.txt
+wabdd decrypt --key-file key.txt dump backups/<phone>_<date>
+
+# 4. Import the decrypted msgstore.db (use -no-overwrite to enrich a live-synced DB)
+go run ./cmd/localimport -platform android \
+    -msgstore "backups/<phone>_<date>-decrypted/Databases/msgstore.db" -no-overwrite
+```
+
+The full procedure (getting the Google token, the encryption key, flags and
+limitations — e.g. DM contact names and media files are not part of a Drive
+backup) is in [`localapp/android/README.md`](localapp/android/README.md).
+
 ## 🗄️ Read-Only Local Mode (no whatsmeow, no second database)
 
 Instead of importing, you can run the MCP server **directly against the native
@@ -437,6 +475,7 @@ All data is stored in `./data/`:
 - [x] Docker deployment (with healthcheck!)
 - [x] Import full history from the local WhatsApp desktop app (macOS)
 - [x] Import full history from the local WhatsApp desktop app (Windows: decrypt + IndexedDB extract)
+- [x] Import full history from a Google Drive backup (Android: download + crypt15 decrypt)
 - [x] Read-only local mode: serve the native WhatsApp app database directly (no whatsmeow)
 
 ### 🚧 Planned
