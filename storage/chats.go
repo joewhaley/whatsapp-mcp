@@ -81,6 +81,38 @@ func (s *MessageStore) SaveChat(chat Chat) error {
 	return err
 }
 
+// SaveChatFillGaps inserts a chat without regressing an existing row. It is the
+// -no-overwrite counterpart of SaveChat: new chats are inserted, and for an
+// existing chat it fills a missing name but never moves last_message_time
+// backwards or changes the unread count (which the live sync owns). Used by the
+// local-app importer so importing only adds chats and back-fills names.
+func (s *MessageStore) SaveChatFillGaps(chat Chat) error {
+	if chat.JID == "" {
+		return fmt.Errorf("chat JID cannot be empty")
+	}
+
+	query := `
+	INSERT INTO chats (jid, push_name, contact_name, last_message_time, unread_count, is_group)
+	VALUES (?, ?, ?, ?, ?, ?)
+	ON CONFLICT(jid) DO UPDATE SET
+	    push_name = COALESCE(NULLIF(excluded.push_name, ''), chats.push_name),
+	    contact_name = COALESCE(NULLIF(excluded.contact_name, ''), chats.contact_name),
+	    last_message_time = MAX(chats.last_message_time, excluded.last_message_time)
+	`
+
+	_, err := s.db.Exec(
+		query,
+		chat.JID,
+		chat.PushName,
+		chat.ContactName,
+		chat.LastMessageTime.Unix(),
+		chat.UnreadCount,
+		chat.IsGroup,
+	)
+
+	return err
+}
+
 // ListChats returns all chats ordered by last message timestamp.
 func (s *MessageStore) ListChats(limit int) ([]Chat, error) {
 	query := `

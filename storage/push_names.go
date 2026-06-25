@@ -42,6 +42,41 @@ func (s *MessageStore) SavePushNames(pushNames map[string]string) error {
 	return tx.Commit()
 }
 
+// SavePushNamesFillGaps inserts display names only for JIDs that do not already
+// have one, never overwriting an existing push name. It is the -no-overwrite
+// counterpart of SavePushNames, used by the local-app importer so it back-fills
+// names without replacing the live sync's current display names.
+func (s *MessageStore) SavePushNamesFillGaps(pushNames map[string]string) error {
+	if len(pushNames) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO push_names (jid, push_name, updated_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(jid) DO NOTHING
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	now := time.Now().Unix()
+	for jid, pushName := range pushNames {
+		if _, err := stmt.Exec(jid, pushName, now); err != nil {
+			return fmt.Errorf("failed to save push name for %s: %w", jid, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
 // GetPushName retrieves a single push name by JID.
 // It returns an empty string if the JID is not found.
 func (s *MessageStore) GetPushName(jid string) (string, error) {

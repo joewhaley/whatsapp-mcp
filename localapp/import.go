@@ -76,7 +76,11 @@ func Import(src Source, dest *storage.MessageStore, media *storage.MediaStore, o
 			c.ContactName = chat.Name
 		}
 		if !opts.DryRun {
-			if err := dest.SaveChat(c); err != nil {
+			save := dest.SaveChat
+			if opts.NoOverwrite {
+				save = dest.SaveChatFillGaps
+			}
+			if err := save(c); err != nil {
 				return stats, fmt.Errorf("save chat %s: %w", chat.JID, err)
 			}
 		}
@@ -89,7 +93,11 @@ func Import(src Source, dest *storage.MessageStore, media *storage.MediaStore, o
 		return stats, fmt.Errorf("read push names: %w", err)
 	}
 	if !opts.DryRun && len(pushNames) > 0 {
-		if err := dest.SavePushNames(pushNames); err != nil {
+		savePush := dest.SavePushNames
+		if opts.NoOverwrite {
+			savePush = dest.SavePushNamesFillGaps
+		}
+		if err := savePush(pushNames); err != nil {
 			return stats, fmt.Errorf("save push names: %w", err)
 		}
 	}
