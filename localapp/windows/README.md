@@ -123,6 +123,26 @@ Other flags (`-db`, `-me`, `-since`, `-chat`, `-limit`, `-include-system`,
 real WhatsApp message IDs — so it is safe to re-run and to run alongside the live
 sync.
 
+### `-no-overwrite` (recommended when a live sync already populated the DB)
+
+By default the import upserts every row, so a message the live sync already has
+is **replaced** with the local-app version. For link-preview messages the live
+sync's text (the message body + URL) is richer than the desktop app's
+search-index text, so replacing it is a mild downgrade.
+
+`-no-overwrite` instead **only inserts messages the database lacks**, leaving
+existing rows untouched — *except* that a row whose body is a live-sync
+placeholder (`[Protocol]`, `[Unknown message type]`, `[Image]`, …) is upgraded to
+the real text when the local app has it:
+
+```bash
+go run ./cmd/localimport -platform windows -export wa-windows-export.db -no-overwrite
+```
+
+On a representative database this added ~9.9k missing messages and recovered the
+real text behind ~1.6k placeholder rows (including ~1.4k `[Protocol]`), while
+leaving every genuine existing message unchanged.
+
 ## What you get / known limits
 
 * **Direction, sender, type, quotes, real message IDs** — all recovered.

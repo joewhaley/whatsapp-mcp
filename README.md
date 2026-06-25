@@ -324,7 +324,14 @@ go run ./cmd/localimport
 #   --chat <jid>        only import a single chat
 #   --include-system    include group/system event messages
 #   --no-copy           read the live DB in place (default copies a snapshot first)
+#   --no-overwrite      only insert messages the DB lacks; never overwrite existing
+#                       rows (but do upgrade [Protocol]-style placeholders to real text)
 ```
+
+> **`--no-overwrite`** is the safe choice when a live sync has already populated
+> `messages.db`: it adds only the history the DB is missing and recovers the real
+> text behind `[Protocol]`/`[Unknown message type]`/media placeholders, without
+> replacing any message the live sync already captured.
 
 The import is **idempotent** — messages are keyed by their WhatsApp IDs, so it
 safely overlaps with the live sync and can be re-run any time. By default it
@@ -349,8 +356,8 @@ python localapp/windows/extract_whatsapp_windows.py \
     --idb <…IndexedDB…> --generic <genericStorage.dec.db> \
     --contacts <contacts.dec.db> --out wa-windows-export.db
 
-# 2. Import it
-go run ./cmd/localimport -platform windows -export wa-windows-export.db
+# 2. Import it (use -no-overwrite to enrich an existing live-synced DB safely)
+go run ./cmd/localimport -platform windows -export wa-windows-export.db -no-overwrite
 ```
 
 The full procedure (decrypting the SQLCipher store with ZAPiXDESK, locating the

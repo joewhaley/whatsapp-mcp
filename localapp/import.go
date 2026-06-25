@@ -17,6 +17,11 @@ type ImportOptions struct {
 	BatchSize int
 	// DryRun reads and counts everything but writes nothing.
 	DryRun bool
+	// NoOverwrite, when true, never overwrites a message the destination already
+	// has — it only inserts missing messages, except that existing rows whose
+	// text is a live-sync placeholder (e.g. "[Protocol]") are upgraded to the
+	// real text. The default (false) upserts every row, replacing existing ones.
+	NoOverwrite bool
 	// Progress, when set, is called periodically with the running message count.
 	Progress func(messages int)
 }
@@ -99,11 +104,20 @@ func Import(src Source, dest *storage.MessageStore, media *storage.MediaStore, o
 			return nil
 		}
 		if !opts.DryRun {
-			if err := dest.SaveBulk(msgBatch); err != nil {
-				return fmt.Errorf("save messages: %w", err)
-			}
-			if err := media.SaveMediaMetadataBulk(mediaBatch); err != nil {
-				return fmt.Errorf("save media: %w", err)
+			if opts.NoOverwrite {
+				if err := dest.SaveBulkFillGaps(msgBatch); err != nil {
+					return fmt.Errorf("save messages: %w", err)
+				}
+				if err := media.SaveMediaMetadataBulkFillGaps(mediaBatch); err != nil {
+					return fmt.Errorf("save media: %w", err)
+				}
+			} else {
+				if err := dest.SaveBulk(msgBatch); err != nil {
+					return fmt.Errorf("save messages: %w", err)
+				}
+				if err := media.SaveMediaMetadataBulk(mediaBatch); err != nil {
+					return fmt.Errorf("save media: %w", err)
+				}
 			}
 		}
 		msgBatch = msgBatch[:0]

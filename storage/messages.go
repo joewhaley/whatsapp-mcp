@@ -3,8 +3,36 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
+
+// systemPlaceholders are the bracketed bodies the live whatsmeow sync writes
+// when it cannot render a message (see whatsapp/handlers.go). In fill-gaps mode
+// these are the only existing message texts an import is allowed to overwrite —
+// replacing them with the real text when a local-app import has it.
+var systemPlaceholders = []string{
+	"[Protocol]",
+	"[Unknown message type]",
+	"[Media or unknown]",
+	"[Image]",
+	"[Video]",
+	"[Audio]",
+	"[Document]",
+	"[Sticker]",
+	"[Contact]",
+	"[Location]",
+}
+
+// placeholderInList renders systemPlaceholders as a SQL IN (...) list literal.
+// The values are package constants (no user input), so inlining is safe.
+func placeholderInList() string {
+	quoted := make([]string, len(systemPlaceholders))
+	for i, p := range systemPlaceholders {
+		quoted[i] = "'" + p + "'"
+	}
+	return strings.Join(quoted, ", ")
+}
 
 // Message represents a WhatsApp message.
 type Message struct {
@@ -122,6 +150,61 @@ func (s *MessageStore) SaveBulk(messages []Message) error {
 		)
 
 		if err != nil {
+			return fmt.Errorf("failed to insert message %s: %w", msg.ID, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// SaveBulkFillGaps inserts messages without clobbering rows that already exist,
+// with one exception: a pre-existing row whose text is a live-sync placeholder
+// (e.g. "[Protocol]") is upgraded to the incoming text when that text is real
+// (non-empty and not itself a placeholder). New message IDs are inserted as
+// usual. This lets the local-app importer enrich the database in -no-overwrite
+// mode — adding missing history and recovering bodies the live sync could not
+// render — while leaving messages the live sync already captured untouched.
+func (s *MessageStore) SaveBulkFillGaps(messages []Message) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// INSERT ... ON CONFLICT DO UPDATE ... WHERE: when a row with this id already
+	// exists, the UPDATE runs only if the WHERE holds (existing text is a
+	// placeholder and the incoming text is real); otherwise the conflict is a
+	// no-op, i.e. INSERT OR IGNORE semantics.
+	stmt, err := tx.Prepare(`
+	INSERT INTO messages
+	(id, chat_jid, sender_jid, text, timestamp, is_from_me, message_type, reply_to_id)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(id) DO UPDATE SET text = excluded.text
+	WHERE excluded.text <> ''
+	  AND excluded.text NOT LIKE '[%]'
+	  AND messages.text IN (` + placeholderInList() + `)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, msg := range messages {
+		var replyToID interface{}
+		if msg.ReplyToID != "" {
+			replyToID = msg.ReplyToID
+		}
+
+		if _, err := stmt.Exec(
+			msg.ID,
+			msg.ChatJID,
+			msg.SenderJID,
+			msg.Text,
+			msg.Timestamp.Unix(),
+			msg.IsFromMe,
+			msg.MessageType,
+			replyToID,
+		); err != nil {
 			return fmt.Errorf("failed to insert message %s: %w", msg.ID, err)
 		}
 	}
