@@ -379,7 +379,7 @@ Start with reasonable limits (50-100) to avoid overwhelming results.
 Use ` + "`offset`" + ` or timestamp-based pagination for large datasets.
 
 ### 5. Check Timezone Settings
-Timestamps are shown in server timezone (` + m.timezone.String() + `).
+Timestamps in text output are shown in the server timezone (` + m.timezone.String() + `, set via the TIMEZONE env var, defaults to UTC). Webhook and REST JSON payloads always use UTC.
 
 ## Common Patterns
 

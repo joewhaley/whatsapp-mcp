@@ -12,7 +12,7 @@ func msTimeToTime(ms int64) time.Time {
 	if ms <= 0 {
 		return time.Time{}
 	}
-	return time.Unix(ms/1000, (ms%1000)*int64(time.Millisecond))
+	return time.Unix(ms/1000, (ms%1000)*int64(time.Millisecond)).UTC()
 }
 
 // message_type codes used by the modern Android WhatsApp msgstore "message"

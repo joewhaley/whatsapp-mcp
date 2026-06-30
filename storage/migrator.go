@@ -294,7 +294,7 @@ func (m *Migrator) GetMigrationStatus() ([]MigrationStatus, error) {
 		}
 
 		if appliedAt.Valid {
-			t := time.Unix(appliedAt.Int64, 0)
+			t := time.Unix(appliedAt.Int64, 0).UTC()
 			status.AppliedAt = &t
 		}
 

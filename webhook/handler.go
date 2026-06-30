@@ -147,8 +147,8 @@ func (h *Handler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 		Secret:     req.Secret,
 		EventTypes: req.EventTypes,
 		Active:     true,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
 	}
 
 	if err := h.store.CreateWebhook(webhook); err != nil {
@@ -353,13 +353,13 @@ func (h *Handler) TestWebhook(w http.ResponseWriter, r *http.Request, webhookID 
 	testPayload := WebhookPayload{
 		ID:        uuid.New().String(),
 		EventType: "message.received",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UTC(),
 		Data: MessageEventData{
 			MessageID:   "TEST-" + uuid.New().String(),
 			ChatJID:     "test@s.whatsapp.net",
 			SenderJID:   "test@s.whatsapp.net",
 			Text:        "This is a test message from WhatsApp MCP webhook system",
-			Timestamp:   time.Now(),
+			Timestamp:   time.Now().UTC(),
 			IsFromMe:    false,
 			MessageType: "text",
 			ChatName:    "Test Chat",

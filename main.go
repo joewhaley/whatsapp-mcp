@@ -135,8 +135,8 @@ func main() {
 			URL:        webhookConfig.PrimaryURL,
 			EventTypes: []string{"message"},
 			Active:     true,
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
+			CreatedAt:  time.Now().UTC(),
+			UpdatedAt:  time.Now().UTC(),
 		}
 		// Use upsert to create or update the primary webhook
 		if err := webhookStore.UpsertWebhook(primaryWebhook); err != nil {

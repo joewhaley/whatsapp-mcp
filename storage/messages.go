@@ -284,7 +284,7 @@ func (s *MessageStore) GetMessageByID(messageID string) (*Message, error) {
 		return nil, err
 	}
 
-	msg.Timestamp = time.Unix(timestampUnix, 0)
+	msg.Timestamp = time.Unix(timestampUnix, 0).UTC()
 
 	return &msg, nil
 }
@@ -323,7 +323,7 @@ func (s *MessageStore) GetOldestMessage(chatJID string) (*Message, error) {
 		return nil, err
 	}
 
-	msg.Timestamp = time.Unix(timestampUnix, 0)
+	msg.Timestamp = time.Unix(timestampUnix, 0).UTC()
 
 	return &msg, nil
 }
@@ -422,7 +422,7 @@ func (s *MessageStore) scanMessages(rows *sql.Rows) ([]Message, error) {
 			return nil, err
 		}
 
-		msg.Timestamp = time.Unix(timestampUnix, 0)
+		msg.Timestamp = time.Unix(timestampUnix, 0).UTC()
 		messages = append(messages, msg)
 	}
 
@@ -572,7 +572,7 @@ func (s *MessageStore) scanMessagesWithNames(rows *sql.Rows) ([]MessageWithNames
 			return nil, err
 		}
 
-		msg.Timestamp = time.Unix(timestampUnix, 0)
+		msg.Timestamp = time.Unix(timestampUnix, 0).UTC()
 
 		// populate media metadata if present
 		if mediaFileName.Valid && mediaMimeType.Valid {
@@ -603,7 +603,7 @@ func (s *MessageStore) scanMessagesWithNames(rows *sql.Rows) ([]MessageWithNames
 				meta.DownloadStatus = mediaDownloadStatus.String
 			}
 			if mediaDownloadTimestamp.Valid {
-				ts := time.Unix(mediaDownloadTimestamp.Int64, 0)
+				ts := time.Unix(mediaDownloadTimestamp.Int64, 0).UTC()
 				meta.DownloadTimestamp = &ts
 			}
 			if mediaDownloadError.Valid {

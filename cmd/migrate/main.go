@@ -192,7 +192,7 @@ func getNextVersion(migrationsDir string) (int, error) {
 
 // generateMigrationTemplate generates a migration file template with metadata.
 func generateMigrationTemplate(version int, description string) string {
-	now := time.Now().Format("2006-01-02")
+	now := time.Now().UTC().Format("2006-01-02")
 	prevVersion := version - 1
 	prevVersionStr := "none"
 	if prevVersion > 0 {

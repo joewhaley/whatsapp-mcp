@@ -363,7 +363,7 @@ func (c *Client) StartHistorySync(jids []string, perPage, maxPages int) error {
 	}
 	c.syncProgress = &FullSyncProgress{
 		Running:    true,
-		StartedAt:  time.Now(),
+		StartedAt:  time.Now().UTC(),
 		TotalChats: len(jids),
 	}
 	c.syncProgressMux.Unlock()
@@ -418,7 +418,7 @@ func (c *Client) finishHistorySync() {
 	c.syncProgressMux.Lock()
 	if c.syncProgress != nil {
 		c.syncProgress.Running = false
-		c.syncProgress.FinishedAt = time.Now()
+		c.syncProgress.FinishedAt = time.Now().UTC()
 		c.syncProgress.CurrentChat = ""
 	}
 	total := 0

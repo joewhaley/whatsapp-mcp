@@ -281,7 +281,7 @@ func (c *Client) generateMediaFilePath(meta *storage.MediaMetadata) (string, err
 	}
 
 	// safe filename: {message_id}_{timestamp}_{sanitized_filename}
-	timestamp := time.Now().Format("20060102_150405")
+	timestamp := time.Now().UTC().Format("20060102_150405")
 	safeName := sanitizeFilename(meta.FileName)
 	if safeName == "" {
 		// fallback: use extension from MIME type

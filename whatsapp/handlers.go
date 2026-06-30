@@ -303,7 +303,7 @@ func (c *Client) parseHistoryMessage(chatJID types.JID, msg *waWeb.WebMessageInf
 
 	messageID := key.GetID()
 	fromMe := key.GetFromMe()
-	timestamp := time.Unix(int64(msg.GetMessageTimestamp()), 0)
+	timestamp := time.Unix(int64(msg.GetMessageTimestamp()), 0).UTC()
 
 	// determine sender JID
 	var senderJID types.JID

@@ -152,8 +152,8 @@ func (s *WebhookStore) GetWebhook(id string) (*WebhookRegistration, error) {
 		return nil, fmt.Errorf("failed to unmarshal event types: %w", err)
 	}
 
-	reg.CreatedAt = time.Unix(createdAt, 0)
-	reg.UpdatedAt = time.Unix(updatedAt, 0)
+	reg.CreatedAt = time.Unix(createdAt, 0).UTC()
+	reg.UpdatedAt = time.Unix(updatedAt, 0).UTC()
 
 	return &reg, nil
 }
@@ -207,8 +207,8 @@ func (s *WebhookStore) ListWebhooks(activeOnly bool) ([]WebhookRegistration, err
 			return nil, fmt.Errorf("failed to unmarshal event types: %w", err)
 		}
 
-		reg.CreatedAt = time.Unix(createdAt, 0)
-		reg.UpdatedAt = time.Unix(updatedAt, 0)
+		reg.CreatedAt = time.Unix(createdAt, 0).UTC()
+		reg.UpdatedAt = time.Unix(updatedAt, 0).UTC()
 
 		webhooks = append(webhooks, reg)
 	}
@@ -227,7 +227,7 @@ func (s *WebhookStore) UpdateWebhook(reg WebhookRegistration) error {
 		return fmt.Errorf("failed to marshal event types: %w", err)
 	}
 
-	reg.UpdatedAt = time.Now()
+	reg.UpdatedAt = time.Now().UTC()
 
 	query := `
 		UPDATE webhook_registrations
@@ -354,12 +354,12 @@ func (s *WebhookStore) GetDeliveryStats(webhookID string, since time.Time) (*Del
 	}
 
 	if lastDelivery.Valid {
-		t := time.Unix(lastDelivery.Int64, 0)
+		t := time.Unix(lastDelivery.Int64, 0).UTC()
 		stats.LastDeliveryAt = &t
 	}
 
 	if lastFailure.Valid {
-		t := time.Unix(lastFailure.Int64, 0)
+		t := time.Unix(lastFailure.Int64, 0).UTC()
 		stats.LastFailureAt = &t
 	}
 

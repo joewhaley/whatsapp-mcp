@@ -253,7 +253,7 @@ func (s *MediaStore) GetMediaMetadata(messageID string) (*MediaMetadata, error) 
 		meta.DownloadError = downloadError.String
 	}
 	if downloadTimestampUnix.Valid {
-		ts := time.Unix(downloadTimestampUnix.Int64, 0)
+		ts := time.Unix(downloadTimestampUnix.Int64, 0).UTC()
 		meta.DownloadTimestamp = &ts
 	}
 
@@ -345,7 +345,7 @@ func (s *MediaStore) ListMediaByType(mimeTypePrefix string, limit int) ([]MediaM
 			meta.Duration = &d
 		}
 		if downloadTimestampUnix.Valid {
-			ts := time.Unix(downloadTimestampUnix.Int64, 0)
+			ts := time.Unix(downloadTimestampUnix.Int64, 0).UTC()
 			meta.DownloadTimestamp = &ts
 		}
 		if downloadError.Valid {
@@ -418,7 +418,7 @@ func (s *MediaStore) GetMediaByChat(chatJID string, limit int) ([]MediaMetadata,
 			meta.Duration = &d
 		}
 		if downloadTimestampUnix.Valid {
-			ts := time.Unix(downloadTimestampUnix.Int64, 0)
+			ts := time.Unix(downloadTimestampUnix.Int64, 0).UTC()
 			meta.DownloadTimestamp = &ts
 		}
 		if downloadError.Valid {

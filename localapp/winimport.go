@@ -206,7 +206,7 @@ func (s *WindowsStore) loadChats() error {
 				continue
 			}
 			if lastT.Valid && lastT.Int64 > 0 {
-				c.lastMessage = time.Unix(lastT.Int64, 0)
+				c.lastMessage = time.Unix(lastT.Int64, 0).UTC()
 			}
 			c.unread = int(unread.Int64)
 		}
@@ -229,7 +229,7 @@ func (s *WindowsStore) loadChats() error {
 			continue
 		}
 		if maxT.Valid && maxT.Int64 > 0 {
-			if t := time.Unix(maxT.Int64, 0); t.After(c.lastMessage) {
+			if t := time.Unix(maxT.Int64, 0).UTC(); t.After(c.lastMessage) {
 				c.lastMessage = t
 			}
 		}
@@ -328,7 +328,7 @@ func (s *WindowsStore) IterateMessages(filter MessageFilter, fn func(MessageReco
 			ChatJID:   chatJID,
 			SenderJID: senderJID,
 			Text:      body,
-			Timestamp: time.Unix(t.Int64, 0),
+			Timestamp: time.Unix(t.Int64, 0).UTC(),
 			IsFromMe:  isFromMe,
 			Type:      label,
 			ReplyToID: strings.TrimSpace(quoted.String),

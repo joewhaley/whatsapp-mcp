@@ -182,7 +182,7 @@ func (m *WebhookManager) buildMessagePayload(msg storage.MessageWithNames) Webho
 		ChatJID:           msg.ChatJID,
 		SenderJID:         msg.SenderJID,
 		Text:              msg.Text,
-		Timestamp:         msg.Timestamp,
+		Timestamp:         msg.Timestamp.UTC(),
 		IsFromMe:          msg.IsFromMe,
 		MessageType:       msg.MessageType,
 		ChatName:          msg.ChatName,
@@ -216,7 +216,7 @@ func (m *WebhookManager) buildMessagePayload(msg storage.MessageWithNames) Webho
 	return WebhookPayload{
 		ID:        uuid.New().String(),
 		EventType: eventType,
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UTC(),
 		Data:      data,
 	}
 }

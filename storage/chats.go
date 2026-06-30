@@ -47,7 +47,7 @@ func (s *MessageStore) GetChatByJID(jid string) (*Chat, error) {
 		return nil, err
 	}
 
-	chat.LastMessageTime = time.Unix(lastMsgUnix, 0)
+	chat.LastMessageTime = time.Unix(lastMsgUnix, 0).UTC()
 	return &chat, nil
 }
 
@@ -145,7 +145,7 @@ func (s *MessageStore) ListChats(limit int) ([]Chat, error) {
 			return nil, err
 		}
 
-		chat.LastMessageTime = time.Unix(lastMsgUnix, 0)
+		chat.LastMessageTime = time.Unix(lastMsgUnix, 0).UTC()
 		chats = append(chats, chat)
 	}
 
@@ -223,7 +223,7 @@ func (s *MessageStore) SearchChatsFiltered(search string, useGlob bool, limit in
 			return nil, err
 		}
 
-		chat.LastMessageTime = time.Unix(lastMsgUnix, 0)
+		chat.LastMessageTime = time.Unix(lastMsgUnix, 0).UTC()
 		chats = append(chats, chat)
 	}
 
@@ -264,7 +264,7 @@ func (s *MessageStore) SearchChats(search string, limit int) ([]Chat, error) {
 			return nil, err
 		}
 
-		chat.LastMessageTime = time.Unix(lastMsgUnix, 0)
+		chat.LastMessageTime = time.Unix(lastMsgUnix, 0).UTC()
 		chats = append(chats, chat)
 	}
 

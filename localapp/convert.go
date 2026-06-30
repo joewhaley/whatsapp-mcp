@@ -36,7 +36,7 @@ func nsDateToTime(seconds float64) time.Time {
 	unix := seconds + coreDataEpochOffset
 	sec := int64(unix)
 	nsec := int64((unix - float64(sec)) * 1e9)
-	return time.Unix(sec, nsec)
+	return time.Unix(sec, nsec).UTC()
 }
 
 // ZMESSAGETYPE codes used by the macOS WhatsApp Core Data store. These were

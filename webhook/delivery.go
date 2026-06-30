@@ -70,7 +70,7 @@ func (m *WebhookManager) deliverWebhook(webhook storage.WebhookRegistration, pay
 		AttemptNumber: attempt,
 		StatusCode:    resp.StatusCode,
 		Success:       true,
-		AttemptedAt:   time.Now(),
+		AttemptedAt:   time.Now().UTC(),
 	}
 
 	if err := m.store.RecordDelivery(deliveryAttempt); err != nil {
@@ -93,7 +93,7 @@ func (m *WebhookManager) recordFailure(webhook storage.WebhookRegistration, payl
 		StatusCode:    statusCode,
 		Success:       false,
 		Error:         err.Error(),
-		AttemptedAt:   time.Now(),
+		AttemptedAt:   time.Now().UTC(),
 	}
 
 	if dbErr := m.store.RecordDelivery(deliveryAttempt); dbErr != nil {

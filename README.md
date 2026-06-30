@@ -37,7 +37,7 @@ AI:  *reads context, sends reply* → "Sent! I've proposed Thursday at noon"
 - **📱 Full WhatsApp Integration** - Connect to WhatsApp Web using your existing account
 - **💾 Local-First Storage** - All messages stored in SQLite, synced in real-time
 - **🔍 Powerful Search** - Pattern matching, cross-chat queries, sender filtering
-- **⏱️ Timezone Support** - Messages displayed in your local timezone
+- **⏱️ Timezone Support** - Text output uses the configurable `TIMEZONE` (defaults to UTC); webhook/REST JSON payloads are always UTC
 - **📥 On-Demand Loading** - Fetch older messages from WhatsApp servers as needed
 - **🔐 Secure by Design** - API key authentication, local data storage, HTTPS ready
 
