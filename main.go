@@ -192,7 +192,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		if waClient.IsLoggedIn() {
+		if waClient.IsConnected() {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("OK"))
 		} else {
