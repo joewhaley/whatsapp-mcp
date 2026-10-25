@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	waStore "go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -128,6 +130,11 @@ func NewClient(store *storage.MessageStore, mediaStore *storage.MediaStore, webh
 		getEnabledTypes(mediaConfig.AutoDownloadTypes))
 
 	ctx := context.Background()
+	if err := refreshWebVersion(ctx, whatsmeow.GetLatestVersion); err != nil {
+		logger.Warnf("Could not refresh the WhatsApp Web version; trying the bundled version")
+	} else {
+		logger.Infof("Using current WhatsApp Web version %s", waStore.GetWAVersion().String())
+	}
 
 	container, err := sqlstore.New(ctx, "sqlite", "file:"+paths.WhatsAppAuthDBPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)", logger)
 	if err != nil {
@@ -165,6 +172,25 @@ func NewClient(store *storage.MessageStore, mediaStore *storage.MediaStore, webh
 // IsLoggedIn reports whether the client is logged in.
 func (c *Client) IsLoggedIn() bool {
 	return c.wa.Store.ID != nil
+}
+
+// IsConnected requires a live, authenticated socket rather than a saved device ID.
+func (c *Client) IsConnected() bool {
+	return c.wa.IsConnected() && c.wa.IsLoggedIn()
+}
+
+func refreshWebVersion(ctx context.Context, fetch func(context.Context, *http.Client) (*waStore.WAVersionContainer, error)) error {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	version, err := fetch(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if version == nil || version[0] == 0 {
+		return fmt.Errorf("invalid WhatsApp Web version")
+	}
+	waStore.SetWAVersion(*version)
+	return nil
 }
 
 // Connect establishes a connection to WhatsApp.

@@ -1,6 +1,9 @@
 # Runtime state and secrets — never needed in the build context
 data/
 .env
+key.txt
+tokens/
+backups/
 qr.png
 *.log
 
